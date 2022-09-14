@@ -35,7 +35,7 @@ class MailInterceptorTest < Minitest::Test
       'a@wheel.com', 'b@wheel.com', 'c@pump.com', 'd@club.com', 'e@gmail.com', 'john@gmail.com', 'sam@gmail.com'
     ]
     interceptor.delivering_email @message
-    assert_equal ['a@wheel.com', 'b@wheel.com', 'c@pump.com', 'test@example.com', 'john@gmail.com'], @message.to
+    assert_equal ['a@wheel.com', 'b@wheel.com', 'c@pump.com', 'john@gmail.com', '"Orig to: d@club.com,e@gmail.com,sam@gmail.com" <test@example.com>'], @message.to
   end
 
   def test_that_emails_are_not_sent_to_intercept_emails
@@ -59,7 +59,7 @@ class MailInterceptorTest < Minitest::Test
       'a@wheel.com', 'b@wheel.com', 'c@pump.com', 'd@club.com', 'e@gmail.com', 'john@gmail.com', 'sam@gmail.com'
     ]
     interceptor.delivering_email @message
-    assert_equal ['incoming@example.com', 'd@club.com', 'e@gmail.com', 'john@gmail.com', 'sam@gmail.com'], @message.to
+    assert_equal ['d@club.com', 'e@gmail.com', 'john@gmail.com', 'sam@gmail.com', '"Orig to: a@wheel.com,b@wheel.com,c@pump.com" <incoming@example.com>'], @message.to
   end
 
   def test_that_when_forward_emails_to_is_empty_then_emails_are_skipped

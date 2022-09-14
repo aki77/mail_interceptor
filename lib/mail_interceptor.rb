@@ -3,6 +3,7 @@
 require "active_support"
 require 'active_support/core_ext/object/blank'
 require 'active_support/core_ext/array'
+require 'action_mailer'
 require 'mail_interceptor/version'
 
 module MailInterceptor
@@ -27,7 +28,7 @@ module MailInterceptor
     end
 
     def delivering_email(message)
-      @recipients = message.to
+      @recipients = Array.wrap(message.to)
       to_emails_list = normalize_recipients
 
       to_emails_list = to_emails_list.filter { |email| zerobounce_validate_email(email) } if zerobounce_enabled?
@@ -45,41 +46,35 @@ module MailInterceptor
     end
 
     def normalize_recipients
-      return Array.wrap(recipients) unless env.intercept?
+      return recipients unless env.intercept?
 
-      normalized_recipients = filter_by_intercept_emails
-      normalized_recipients << filter_by_deliver_emails_to
-      normalized_recipients.flatten.uniq.reject(&:blank?)
+      normalized_recipients = [*filter_by_intercept_emails, *filter_by_deliver_emails_to]
+      forward_recipients = forward_recipients_by_normalized_recipients(normalized_recipients)
+
+      [normalized_recipients, forward_recipients].flatten.uniq.reject(&:blank?)
     end
 
     def filter_by_intercept_emails
-      if intercept_emails.present?
-        recipients.map do |recipient|
-          if intercept_emails.find { |regex| Regexp.new(regex, Regexp::IGNORECASE).match(recipient) }
-            forward_emails_to
-          else
-            recipient
-          end
-        end
-      else
-        []
+      return [] if intercept_emails.blank?
+
+      recipients.select do |recipient|
+        intercept_emails.none? { |regex| Regexp.new(regex, Regexp::IGNORECASE).match(recipient) }
       end
     end
 
     def filter_by_deliver_emails_to
-      return forward_emails_to if deliver_emails_to.empty? && intercept_emails.empty?
+      return [] if (deliver_emails_to.empty? && intercept_emails.empty?) || intercept_emails.present?
 
-      if intercept_emails.empty?
-        recipients.map do |recipient|
-          if deliver_emails_to.find { |regex| Regexp.new(regex, Regexp::IGNORECASE).match(recipient) }
-            recipient
-          else
-            forward_emails_to
-          end
-        end
-      else
-        []
+      recipients.select do |recipient|
+        deliver_emails_to.any? { |regex| Regexp.new(regex, Regexp::IGNORECASE).match(recipient) }
       end
+    end
+
+    def forward_recipients_by_normalized_recipients(normalized_recipients)
+      intercepted_recipients = recipients - normalized_recipients
+      return [] if intercepted_recipients.empty?
+
+      forward_emails_to.map { |email| ActionMailer::Base.email_address_with_name(email, "Orig to: #{intercepted_recipients.join(',').truncate(100)}") }
     end
 
     def zerobounce_validate_email(email)
@@ -87,7 +82,7 @@ module MailInterceptor
       is_email_valid = Zerobounce.validate(email: email).valid?
       print "Zerobounce validation for #{email} is #{is_email_valid ? 'valid' : 'invalid'}\n"
       is_email_valid
-    end 
+    end
   end
 
   class InterceptorEnv
